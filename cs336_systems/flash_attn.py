@@ -43,7 +43,7 @@ class TorchAttention(torch.autograd.Function):
         O = torch.empty((combined_batch_dims, N_q, D_v), device = device, dtype = dtype)
 
         for query_i in range(cdiv(N_q, ctx.Q_TILE_SIZE)):
-            O_i = torch.zeros(combined_batch_dims, ctx.Q_TILE_SIZE, D_q, device=device, dtype=dtype)
+            O_i = torch.zeros(combined_batch_dims, ctx.Q_TILE_SIZE, D_v, device=device, dtype=dtype)
             # [batch, ctx.Q_TILE_SIZE] -> partial expsum
             l_i = torch.zeros(combined_batch_dims, ctx.Q_TILE_SIZE, device=device, dtype=dtype)
             # [batch, ctx.Q_TILE_SIZE], max row_max
@@ -75,12 +75,12 @@ class TorchAttention(torch.autograd.Function):
                 l_i_new = torch.exp(m_i - m_i_new) * l_i + reduce(P_ij, 'b q k -> b q', 'sum')
 
                 # [batch, ctx.Q_TILE_SIZE]
-                diag_el = torch.exp(m_i - m_i_new)
+                O_i_scale = torch.exp(m_i - m_i_new)
                 # [batch, ctx.Q_TILE_SIZE, D_v]
-                diag = diag_el.unsqueeze(-1) * O_i
-                stride_pv = einsum(P_ij, V_block, 'b q k, b k d -> b q d')
+                O_i_scaled = O_i_scale.unsqueeze(-1) * O_i
+                stride_O = einsum(P_ij, V_block, 'b q k, b k d -> b q d')
                 # [batch, ctx.Q_TILE_SIZE, D_v]
-                O_i_new = diag + stride_pv
+                O_i_new = O_i_scaled + stride_O
                 if verbose:
                     print(f'O_i_new:{O_i_new}')
                 # update l_i, m_i, O_i
